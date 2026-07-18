@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Skrifhub GTAV Tester</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main id="app" class="panel is-hidden" aria-hidden="true" hidden>
+        <header class="panel-header">
+            <div>
+                <p class="eyebrow">Development tool</p>
+                <h1>Skrifhub GTAV Tester</h1>
+            </div>
+            <button id="closeButton" class="icon-button" type="button" aria-label="Close menu">&times;</button>
+        </header>
+
+        <div id="vehicleStatus" class="vehicle-status">No test vehicle</div>
+        <div id="message" class="message" role="status" aria-live="polite"></div>
+
+        <nav class="tabs" aria-label="Car tester sections">
+            <button class="tab is-active" data-tab="vehicles" type="button">Vehicles</button>
+            <button class="tab" data-tab="paint" type="button">Paint</button>
+            <button class="tab" data-tab="liveries" type="button">Liveries</button>
+            <button class="tab" data-tab="tuning" type="button">Tuning</button>
+            <button class="tab" data-tab="extras" type="button">Extras</button>
+            <button class="tab" data-tab="utilities" type="button">Utilities</button>
+        </nav>
+
+        <div class="content">
+            <section class="tab-panel is-active" data-panel="vehicles">
+                <div class="browser-toolbar">
+                    <input id="vehicleSearch" type="search" placeholder="Search vehicles..." autocomplete="off">
+                    <button id="refreshCatalogue" type="button">Refresh</button>
+                </div>
+                <div class="filter-row">
+                    <div>
+                        <label for="categoryFilter">Category</label>
+                        <select id="categoryFilter"></select>
+                    </div>
+                    <div>
+                        <label for="sourceFilter">Source</label>
+                        <select id="sourceFilter"></select>
+                    </div>
+                </div>
+                <div class="browser-summary">
+                    <span id="vehicleCount">0 vehicles</span>
+                    <span id="selectedVehicle">Nothing selected</span>
+                </div>
+                <div id="vehicleList" class="vehicle-list" role="listbox" aria-label="Available vehicles"></div>
+                <button id="spawnButton" class="primary-button full-width" type="button">Spawn Selected Vehicle</button>
+                <p class="hint">Search by name, model, manufacturer, or source. Double-clicking a row also spawns it.</p>
+            </section>
+
+            <section class="tab-panel" data-panel="paint">
+                <div class="field-row">
+                    <div>
+                        <label for="primaryColour">Primary body colour</label>
+                        <span id="primaryValue" class="value-label">#000000</span>
+                    </div>
+                    <input id="primaryColour" type="color" value="#000000">
+                </div>
+                <div class="field-row">
+                    <div>
+                        <label for="secondaryColour">Secondary body colour</label>
+                        <span id="secondaryValue" class="value-label">#000000</span>
+                    </div>
+                    <input id="secondaryColour" type="color" value="#000000">
+                </div>
+                <p class="hint">Changes are applied live as custom RGB colours.</p>
+            </section>
+
+            <section class="tab-panel" data-panel="liveries">
+                <div id="liveryEmpty" class="empty-state">Spawn a vehicle to inspect its liveries.</div>
+                <div id="liveryControls" class="is-hidden">
+                    <div class="livery-readout">
+                        <span id="liveryType">No implementation</span>
+                        <strong id="liveryIndex">—</strong>
+                    </div>
+                    <div class="button-row">
+                        <button id="previousLivery" type="button">Previous</button>
+                        <button id="nextLivery" type="button">Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="tab-panel" data-panel="tuning">
+                <div id="tuningEmpty" class="empty-state">Spawn a vehicle to inspect available modifications.</div>
+                <div id="tuningList" class="tuning-list"></div>
+                <div id="tuningNavigator" class="tuning-navigator is-hidden">
+                    <span id="tuningCategoryName">—</span>
+                    <div class="option-stepper">
+                        <button id="previousPart" type="button" aria-label="Previous tuning option">Previous</button>
+                        <strong id="tuningOptionReadout">—</strong>
+                        <button id="nextPart" type="button" aria-label="Next tuning option">Next</button>
+                    </div>
+                    <small id="tuningConfirmedReadout" class="confirmed-readout">Confirmed: —</small>
+                    <div class="compact-actions">
+                        <button id="confirmPart" class="primary-button" type="button">Confirm</button>
+                        <button id="revertPreview" type="button">Revert Preview</button>
+                    </div>
+                </div>
+                <p class="keyboard-help">↑↓ Category&nbsp;&nbsp; ←→ Option&nbsp;&nbsp; Enter Confirm&nbsp;&nbsp; Backspace Stock</p>
+                <div class="stacked-actions">
+                    <button id="maxPerformance" type="button">Apply Maximum Performance</button>
+                    <button id="resetModifications" class="danger-button" type="button">Reset All Modifications</button>
+                </div>
+            </section>
+
+            <section class="tab-panel" data-panel="extras">
+                <div id="extrasEmpty" class="empty-state">Spawn a vehicle to inspect available extras.</div>
+                <div id="extrasList" class="extras-list"></div>
+                <p class="keyboard-help">↑↓ Extra&nbsp;&nbsp; ←→ State&nbsp;&nbsp; Enter Apply</p>
+            </section>
+
+            <section class="tab-panel" data-panel="utilities">
+                <div class="utility-grid">
+                    <button id="repairButton" type="button">Repair</button>
+                    <button id="cleanButton" type="button">Clean Vehicle</button>
+                    <button id="resetButton" type="button">Reset Vehicle</button>
+                    <button id="deleteButton" class="danger-button" type="button">Delete Vehicle</button>
+                    <button id="focusVehicle" type="button">Focus Vehicle</button>
+                    <button id="randomVisualBuild" type="button">Random Visual Build</button>
+                    <button id="utilityPreviousPart" type="button">Previous Part</button>
+                    <button id="utilityNextPart" type="button">Next Part</button>
+                </div>
+                <div class="stacked-actions preset-actions">
+                    <button id="saveSetup" type="button">Save Current Setup</button>
+                    <button id="loadSetup" type="button">Load Saved Setup</button>
+                    <button id="copySetup" type="button">Copy Setup JSON</button>
+                    <button id="resetVisuals" class="danger-button" type="button">Reset Visuals to Stock</button>
+                </div>
+                <p class="hint">Reset Vehicle replaces the current test vehicle with a fresh spawn.</p>
+            </section>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
