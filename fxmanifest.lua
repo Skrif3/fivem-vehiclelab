@@ -1,8 +1,8 @@
 fx_version 'cerulean'
 game 'gta5'
 
-author 'Skrifhub'
-description 'Skrifhub GTAV vehicle, livery, paint, and tuning tester'
+author 'SkrifHub'
+description 'Standalone FiveM vehicle development, tuning and livery testing tool'
 version '1.0.0'
 
 ui_page 'html/index.html'

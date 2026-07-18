@@ -1,6 +1,8 @@
 Config = {}
 
-Config.Command = 'cartest'
+Config.Command = 'vehiclelab'
+Config.ResetCommand = 'vehiclelabreset'
+Config.RefreshCommand = 'vehiclelabrefresh'
 Config.DefaultKey = 'F6'
 Config.SpawnDistance = 5.0
 Config.ModelLoadTimeout = 10000

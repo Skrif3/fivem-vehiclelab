@@ -17,7 +17,7 @@ local fallbackPaths = {
 local function debugLog(message, ...)
     if Config.Debug ~= true then return end
     if select('#', ...) > 0 then message = message:format(...) end
-    print(('[car_tester] %s'):format(message))
+    print(('[vehiclelab] %s'):format(message))
 end
 
 local function trim(value)
@@ -181,7 +181,7 @@ local function scanResource(resourceName, detected, stats)
 end
 
 local function sendCatalogue(target)
-    TriggerClientEvent('car_tester:client:catalogue', target, {
+    TriggerClientEvent('vehiclelab:client:catalogue', target, {
         version = catalogueVersion,
         vehicles = cachedCatalogue
     })
@@ -248,7 +248,7 @@ local function scheduleScan(reason)
     end)
 end
 
-RegisterNetEvent('car_tester:server:requestCatalogue', function()
+RegisterNetEvent('vehiclelab:server:requestCatalogue', function()
     local player = source
     if catalogueReady then
         sendCatalogue(player)
@@ -257,14 +257,17 @@ RegisterNetEvent('car_tester:server:requestCatalogue', function()
     end
 end)
 
-RegisterCommand('cartestrefreshvehicles', function(source)
+local function refreshCatalogueCommand(source)
     debugLog('catalogue refresh requested by %s', source == 0 and 'server console' or ('player ' .. source))
     rebuildCatalogue('admin refresh')
-end, true)
+end
+
+RegisterCommand(Config.RefreshCommand, refreshCatalogueCommand, true)
+RegisterCommand('cartestrefreshvehicles', refreshCatalogueCommand, true)
 
 AddEventHandler('onResourceStart', function(resourceName)
     if resourceName == currentResource then
-        scheduleScan('car_tester start')
+        scheduleScan('vehiclelab start')
     else
         scheduleScan(('resource start: %s'):format(resourceName))
     end

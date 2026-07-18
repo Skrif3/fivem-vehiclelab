@@ -76,7 +76,7 @@ local function debugLog(message, ...)
     if select('#', ...) > 0 then
         message = message:format(...)
     end
-    print(('[car_tester] %s'):format(message))
+    print(('[vehiclelab] %s'):format(message))
 end
 
 local function isInteger(value)
@@ -729,7 +729,7 @@ local function registerSafeCallback(name, handler)
             presetBusy = false
             extrasBusy = false
             cameraBusy = false
-            print(('[car_tester] NUI callback "%s" failed: %s'):format(name, err))
+            print(('[vehiclelab] NUI callback "%s" failed: %s'):format(name, err))
             respond(failure('The requested action failed. Check the client console.'))
         elseif not responded then
             respond(failure('The requested action returned no result.'))
@@ -949,7 +949,7 @@ registerSafeCallback('ready', function(_, respond)
 end)
 
 registerSafeCallback('refreshCatalogue', function(_, respond)
-    TriggerServerEvent('car_tester:server:requestCatalogue')
+    TriggerServerEvent('vehiclelab:server:requestCatalogue')
     respond(success('Vehicle catalogue refresh requested.'))
 end)
 
@@ -1325,7 +1325,7 @@ registerSafeCallback('resetVisuals', function(_, respond)
     end)
 end)
 
-RegisterNetEvent('car_tester:client:catalogue', function(payload)
+RegisterNetEvent('vehiclelab:client:catalogue', function(payload)
     if type(payload) ~= 'table' or type(payload.vehicles) ~= 'table' then return end
 
     local sanitized = {}
@@ -1353,9 +1353,13 @@ RegisterCommand(Config.Command, function()
     setMenuOpen(not menuOpen)
 end, false)
 
-RegisterKeyMapping(Config.Command, 'Open Skrifhub GTAV Tester', 'keyboard', Config.DefaultKey)
+RegisterCommand('cartest', function()
+    setMenuOpen(not menuOpen)
+end, false)
 
-RegisterCommand('cartestreset', function()
+RegisterKeyMapping(Config.Command, 'Open VehicleLab', 'keyboard', Config.DefaultKey)
+
+local function resetVehicleLab()
     forceCloseMenu(true)
     if getVehicle() then
         deleteTrackedVehicle()
@@ -1363,8 +1367,11 @@ RegisterCommand('cartestreset', function()
         spawnedVehicle = nil
         spawnedModel = nil
     end
-    debugLog('resource state reset with /cartestreset')
-end, false)
+    debugLog('resource state reset')
+end
+
+RegisterCommand(Config.ResetCommand, resetVehicleLab, false)
+RegisterCommand('cartestreset', resetVehicleLab, false)
 
 AddEventHandler('playerSpawned', function()
     forceCloseMenu(false)
@@ -1377,7 +1384,7 @@ CreateThread(function()
     SetNuiFocus(false, false)
     SendNUIMessage({ action = 'close', clear = true })
     rebuildValidatedCatalogue()
-    TriggerServerEvent('car_tester:server:requestCatalogue')
+    TriggerServerEvent('vehiclelab:server:requestCatalogue')
     debugLog('resource initialized')
 end)
 
