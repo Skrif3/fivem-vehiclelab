@@ -3,11 +3,14 @@ game 'gta5'
 
 author 'SkrifHub'
 description 'Standalone FiveM vehicle development, tuning and livery testing tool'
-version '1.0.0'
+version '2.0.0'
 
 ui_page 'html/index.html'
 
-shared_script 'config.lua'
+shared_scripts {
+    'config.lua',
+    'shared/constants.lua'
+}
 
 client_scripts {
     'shared/base_vehicles.lua',

@@ -1,17 +1,23 @@
 local currentResource = GetCurrentResourceName()
-local cachedCatalogue = {}
-local catalogueReady = false
+local Events = VehicleLabConstants.Events
+local discovery = Config.VehicleDiscovery or {}
+local cachedCatalogue, catalogueResources = {}, {}
+local catalogueReady, scanScheduled, scanInProgress, scanQueued = false, false, false, false
 local catalogueVersion = 0
-local scanScheduled = false
-local scanInProgress = false
-local scanQueued = false
+
+local function unixTimestamp()
+    local systemLibrary = type(os) == 'table' and os or nil
+    local timeFunction = systemLibrary and systemLibrary.time or nil
+    if type(timeFunction) ~= 'function' then return 0 end
+    local ok, value = pcall(timeFunction)
+    value = ok and tonumber(value) or nil
+    if not value or value ~= value or value == math.huge or value == -math.huge then return 0 end
+    return math.max(0, math.floor(value))
+end
 
 local fallbackPaths = {
-    'vehicles.meta',
-    'data/vehicles.meta',
-    'meta/vehicles.meta',
-    'common/data/vehicles.meta',
-    'common/data/levels/gta5/vehicles.meta'
+    'vehicles.meta', 'data/vehicles.meta', 'meta/vehicles.meta',
+    'common/data/vehicles.meta', 'common/data/levels/gta5/vehicles.meta'
 }
 
 local function debugLog(message, ...)
@@ -21,13 +27,16 @@ local function debugLog(message, ...)
 end
 
 local function trim(value)
-    if type(value) ~= 'string' then return '' end
-    return value:match('^%s*(.-)%s*$') or ''
+    return type(value) == 'string' and (value:match('^%s*(.-)%s*$') or '') or ''
 end
 
-local function decodeXmlText(value)
-    value = trim(value)
-    return value:gsub('&amp;', '&'):gsub('&lt;', '<'):gsub('&gt;', '>')
+local function hasPermission(player, permission)
+    if player == 0 or Config.Permissions.RequireAce ~= true then return true end
+    return type(permission) == 'string' and permission ~= '' and IsPlayerAceAllowed(player, permission)
+end
+
+local function decodeXml(value)
+    return trim(value):gsub('&amp;', '&'):gsub('&lt;', '<'):gsub('&gt;', '>')
         :gsub('&quot;', '"'):gsub('&apos;', "'")
 end
 
@@ -36,129 +45,115 @@ local function validModelName(model)
         and model:match('^[%w_%-]+$') ~= nil
 end
 
-local function normalizeResourcePath(path, declared)
+local function normalizePath(path, declared)
     path = trim(path):gsub('\\', '/'):gsub('^%./', '')
     if path == '' or path:sub(1, 1) == '/' or path:find(':', 1, true)
-        or path:find('..', 1, true) then
-        return nil
-    end
-
-    local hadWildcard = path:find('*', 1, true) or path:find('?', 1, true)
-    if hadWildcard then
-        -- LoadResourceFile does not expand globs. Resolve common manifest forms
-        -- such as data/**/vehicles.meta to a reasonable concrete fallback.
-        path = path:gsub('%*%*/', ''):gsub('%*/', ''):gsub('%*', ''):gsub('%?', '')
-        path = path:gsub('//+', '/')
-    end
-
+        or path:find('..', 1, true) then return nil end
     local lower = path:lower()
-    if hadWildcard and (lower:sub(-6) == '/.meta' or lower:sub(-5) == '/meta') then return nil end
-    if declared then
-        if lower:sub(-5) ~= '.meta' then return nil end
-    elseif lower:sub(-13) ~= 'vehicles.meta' then
-        return nil
-    end
+    if declared and lower:sub(-5) ~= '.meta' and not lower:find('vehicles.meta', 1, true) then return nil end
+    if not declared and lower:sub(-13) ~= 'vehicles.meta' then return nil end
+    -- LoadResourceFile cannot enumerate a glob. The declaration is retained for
+    -- diagnostics while concrete conventional fallbacks are attempted separately.
+    if path:find('[%*%?]') then return nil end
     return path
 end
 
-local function addCandidate(candidates, seen, path, declared)
-    path = normalizeResourcePath(path, declared == true)
+local function addCandidate(list, seen, path, declared)
+    path = normalizePath(path, declared == true)
     if not path then return end
     local key = path:lower()
     if seen[key] then
-        if declared then seen[key].declared = true end
+        seen[key].declared = seen[key].declared or declared == true
         return
     end
-    local candidate = { path = path, declared = declared == true }
-    seen[key] = candidate
-    candidates[#candidates + 1] = candidate
+    local item = { path = path, declared = declared == true }
+    seen[key], list[#list + 1] = item, item
 end
 
-local function addMetadataExtraPaths(resourceName, index, candidates, seen)
-    local extra = GetResourceMetadata(resourceName, 'data_file_extra', index)
-    if type(extra) ~= 'string' or extra == '' then return end
+local function collectStrings(value, output, depth)
+    if depth > 4 then return end
+    if type(value) == 'string' then output[#output + 1] = value return end
+    if type(value) ~= 'table' then return end
+    for _, child in pairs(value) do collectStrings(child, output, depth + 1) end
+end
 
-    local ok, decoded = pcall(json.decode, extra)
-    if ok and type(decoded) == 'string' then
-        addCandidate(candidates, seen, decoded, true)
-    elseif ok and type(decoded) == 'table' then
-        for _, path in pairs(decoded) do
-            if type(path) == 'string' then addCandidate(candidates, seen, path, true) end
+local function declaredMetadata(resourceName)
+    local count = tonumber(GetNumResourceMetadata(resourceName, 'data_file')) or 0
+    for index = 0, math.min(count - 1, 127) do
+        if trim(GetResourceMetadata(resourceName, 'data_file', index)):upper() == 'VEHICLE_METADATA_FILE' then
+            return true
         end
-    elseif extra:lower():find('vehicles.meta', 1, true) then
-        addCandidate(candidates, seen, extra, true)
     end
+    return (tonumber(GetNumResourceMetadata(resourceName, 'vehicle_metadata_file')) or 0) > 0
 end
 
 local function collectMetadataPaths(resourceName)
     local candidates, seen = {}, {}
-    local dataFileCount = tonumber(GetNumResourceMetadata(resourceName, 'data_file')) or 0
-    for index = 0, math.min(dataFileCount - 1, 63) do
-        local kind = trim(GetResourceMetadata(resourceName, 'data_file', index)):upper()
-        if kind == 'VEHICLE_METADATA_FILE' then
-            addMetadataExtraPaths(resourceName, index, candidates, seen)
-        end
-    end
-
-    -- Legacy manifests and unusual wrappers may expose the path directly.
-    for _, metadataKey in ipairs({ 'vehicle_metadata_file', 'file', 'files' }) do
-        local count = tonumber(GetNumResourceMetadata(resourceName, metadataKey)) or 0
-        for index = 0, math.min(count - 1, 127) do
-            local value = GetResourceMetadata(resourceName, metadataKey, index)
-            if type(value) == 'string' and value:lower():find('vehicles.meta', 1, true) then
-                addCandidate(candidates, seen, value, metadataKey == 'vehicle_metadata_file')
+    local dataCount = tonumber(GetNumResourceMetadata(resourceName, 'data_file')) or 0
+    for index = 0, math.min(dataCount - 1, 127) do
+        if trim(GetResourceMetadata(resourceName, 'data_file', index)):upper() == 'VEHICLE_METADATA_FILE' then
+            local extra = GetResourceMetadata(resourceName, 'data_file_extra', index)
+            if type(extra) == 'string' and extra ~= '' then
+                local values, ok, decoded = {}, pcall(json.decode, extra)
+                if ok then collectStrings(decoded, values, 0) else values[1] = extra end
+                for _, value in ipairs(values) do
+                    if value:lower():find('.meta', 1, true) then addCandidate(candidates, seen, value, true) end
+                end
             end
         end
     end
-
+    for _, key in ipairs({ 'vehicle_metadata_file', 'file', 'files' }) do
+        local count = tonumber(GetNumResourceMetadata(resourceName, key)) or 0
+        for index = 0, math.min(count - 1, 255) do
+            local value = GetResourceMetadata(resourceName, key, index)
+            if type(value) == 'string' and value:lower():find('vehicles.meta', 1, true) then
+                addCandidate(candidates, seen, value, key == 'vehicle_metadata_file')
+            end
+        end
+    end
+    -- Safe fallbacks remain inside the resource virtual filesystem.
     for _, path in ipairs(fallbackPaths) do addCandidate(candidates, seen, path, false) end
     return candidates
 end
 
 local function extractTag(block, tag)
-    local value = block:match('<' .. tag .. '>%s*(.-)%s*</' .. tag .. '>')
-    if not value then return nil end
-    value = decodeXmlText(value)
+    local value = block:match('<%s*' .. tag .. '%s*>%s*(.-)%s*</%s*' .. tag .. '%s*>')
+    value = value and decodeXml(value) or nil
     return value ~= '' and value or nil
 end
 
 local function parseVehiclesMeta(contents, resourceName, detected, stats)
-    local parsedAny = false
-    for block in contents:gmatch('<Item[^>]*>(.-)</Item>') do
+    if type(contents) ~= 'string' or not contents:lower():find('<modelname', 1, true) then return false end
+    local parsed = false
+    for block in contents:gmatch('<%s*Item[^>]*>(.-)</%s*Item%s*>') do
         local model = extractTag(block, 'modelName')
         if model then
             model = model:lower()
             if validModelName(model) then
-                parsedAny = true
+                parsed = true
                 if detected[model] then
                     stats.duplicates = stats.duplicates + 1
-                elseif stats.vehicles < 5000 then
-                    local gameName = extractTag(block, 'gameName')
-                    local manufacturer = extractTag(block, 'vehicleMakeName')
-                    local handlingId = extractTag(block, 'handlingId')
+                elseif stats.vehicles < (tonumber(discovery.MaxVehicles) or 5000) then
                     detected[model] = {
                         model = model,
-                        label = gameName or model,
-                        gameName = gameName,
-                        manufacturer = manufacturer,
-                        handlingId = handlingId,
-                        category = 'Add-on',
-                        resource = resourceName,
-                        sourceType = 'addon'
+                        label = extractTag(block, 'gameName') or model,
+                        gameName = extractTag(block, 'gameName'),
+                        manufacturer = extractTag(block, 'vehicleMakeName'),
+                        handlingId = extractTag(block, 'handlingId'),
+                        category = 'Add-on', resource = resourceName, sourceType = 'addon'
                     }
                     stats.vehicles = stats.vehicles + 1
                 end
             end
         end
     end
-    return parsedAny
+    return parsed
 end
 
 local function scanResource(resourceName, detected, stats)
-    local candidates = collectMetadataPaths(resourceName)
-    local maxBytes = math.max(65536, tonumber(Config.MaxMetadataFileBytes) or (4 * 1024 * 1024))
-
-    for _, candidate in ipairs(candidates) do
+    local found = false
+    local maxBytes = math.max(65536, tonumber(discovery.MaxMetadataFileBytes) or 4194304)
+    for _, candidate in ipairs(collectMetadataPaths(resourceName)) do
         local contents = LoadResourceFile(resourceName, candidate.path)
         if type(contents) == 'string' then
             if #contents > maxBytes then
@@ -170,116 +165,108 @@ local function scanResource(resourceName, detected, stats)
                     stats.unreadable = stats.unreadable + 1
                     debugLog('malformed metadata skipped %s:%s', resourceName, candidate.path)
                 elseif parsed then
+                    found = true
                     debugLog('read vehicle metadata %s:%s', resourceName, candidate.path)
                 end
             end
         elseif candidate.declared then
-            stats.unreadable = stats.unreadable + 1
             debugLog('declared metadata unreadable %s:%s', resourceName, candidate.path)
         end
     end
+    return found
 end
 
 local function sendCatalogue(target)
-    TriggerClientEvent('vehiclelab:client:catalogue', target, {
-        version = catalogueVersion,
-        vehicles = cachedCatalogue
-    })
+    TriggerClientEvent(Events.catalogue, target, { version = catalogueVersion, vehicles = cachedCatalogue })
 end
 
 local function rebuildCatalogue(reason)
-    if scanInProgress then
-        scanQueued = true
-        return
-    end
-
+    if scanInProgress then scanQueued = true return end
     scanInProgress = true
     local startedAt = GetGameTimer()
     local stats = { resources = 0, vehicles = 0, duplicates = 0, unreadable = 0 }
-    local detected = {}
-
-    if Config.AutoDetectVehicles ~= false then
-        local resourceCount = tonumber(GetNumResources()) or 0
-        for index = 0, resourceCount - 1 do
-            local resourceName = GetResourceByFindIndex(index)
-            if resourceName and resourceName ~= currentResource then
-                local state = GetResourceState(resourceName)
-                local included = Config.IncludeStoppedResources == true
-                    or state == 'started' or state == 'starting'
-                if included then
+    local detected, sources = {}, {}
+    if discovery.Enabled ~= false then
+        local count = tonumber(GetNumResources()) or 0
+        for index = 0, count - 1 do
+            local name = GetResourceByFindIndex(index)
+            if name and name ~= currentResource then
+                local state = GetResourceState(name)
+                local included = discovery.IncludeStoppedResources == true or state == 'started' or state == 'starting'
+                if included and declaredMetadata(name) then
                     stats.resources = stats.resources + 1
-                    local ok, err = pcall(scanResource, resourceName, detected, stats)
-                    if not ok then
-                        stats.unreadable = stats.unreadable + 1
-                        debugLog('resource scan failed for %s: %s', resourceName, tostring(err))
-                    end
+                    local ok, found = pcall(scanResource, name, detected, stats)
+                    if ok and found then sources[name] = true
+                    elseif not ok then stats.unreadable = stats.unreadable + 1 end
                 end
             end
         end
     end
-
     local catalogue = {}
-    for _, vehicle in pairs(detected) do catalogue[#catalogue + 1] = vehicle end
-    table.sort(catalogue, function(left, right) return left.model < right.model end)
-    cachedCatalogue = catalogue
-    catalogueVersion = catalogueVersion + 1
-    catalogueReady = true
-    scanInProgress = false
-
-    local duration = GetGameTimer() - startedAt
-    debugLog(
-        'scan complete (%s): resources=%d vehicles=%d duplicates=%d unreadable=%d duration=%dms',
-        reason or 'unknown', stats.resources, stats.vehicles, stats.duplicates, stats.unreadable, duration
-    )
+    for _, item in pairs(detected) do catalogue[#catalogue + 1] = item end
+    table.sort(catalogue, function(a, b) return a.model < b.model end)
+    cachedCatalogue, catalogueResources = catalogue, sources
+    catalogueVersion, catalogueReady, scanInProgress = catalogueVersion + 1, true, false
+    debugLog('scan complete (%s): resources=%d vehicles=%d duplicates=%d unreadable=%d duration=%dms',
+        reason or 'unknown', stats.resources, stats.vehicles, stats.duplicates, stats.unreadable,
+        GetGameTimer() - startedAt)
     sendCatalogue(-1)
-
-    if scanQueued then
-        scanQueued = false
-        SetTimeout(250, function() rebuildCatalogue('queued resource change') end)
-    end
+    if scanQueued then scanQueued = false SetTimeout(250, function() rebuildCatalogue('queued change') end) end
 end
 
 local function scheduleScan(reason)
     if scanScheduled then return end
     scanScheduled = true
-    SetTimeout(350, function()
+    SetTimeout(tonumber(discovery.RescanDelayMs) or 350, function()
         scanScheduled = false
         rebuildCatalogue(reason)
     end)
 end
 
-RegisterNetEvent('vehiclelab:server:requestCatalogue', function()
+RegisterNetEvent(Events.requestCatalogue, function()
     local player = source
-    if catalogueReady then
-        sendCatalogue(player)
-    else
-        scheduleScan('initial client request')
-    end
+    if catalogueReady then sendCatalogue(player) else scheduleScan('initial request') end
 end)
 
-local function refreshCatalogueCommand(source)
-    debugLog('catalogue refresh requested by %s', source == 0 and 'server console' or ('player ' .. source))
-    rebuildCatalogue('admin refresh')
+RegisterNetEvent(Events.requestTimestamp, function()
+    TriggerClientEvent(Events.timestamp, source, unixTimestamp())
+end)
+
+RegisterNetEvent(Events.refreshCatalogue, function()
+    local player = source
+    if not hasPermission(player, Config.Permissions.Refresh) then
+        TriggerClientEvent(Events.permission, player, { action = 'refresh', allowed = false })
+        return
+    end
+    TriggerClientEvent(Events.permission, player, { action = 'refresh', allowed = true })
+    rebuildCatalogue(('player %d refresh'):format(player))
+end)
+
+RegisterNetEvent('vehiclelab:server:checkPermission', function(action)
+    local player = source
+    local permission = action == 'advanced' and Config.Permissions.Advanced or Config.Permissions.Use
+    TriggerClientEvent(Events.permission, player, { action = action, allowed = hasPermission(player, permission) })
+end)
+
+local function refreshCommand(player)
+    if not hasPermission(player, Config.Permissions.Refresh) then
+        if player ~= 0 then TriggerClientEvent(Events.permission, player, { action = 'refresh', allowed = false }) end
+        return
+    end
+    rebuildCatalogue(player == 0 and 'console refresh' or ('player %d command'):format(player))
 end
+RegisterCommand(Config.RefreshCommand, refreshCommand, false)
+RegisterCommand('cartestrefreshvehicles', refreshCommand, false)
 
-RegisterCommand(Config.RefreshCommand, refreshCatalogueCommand, true)
-RegisterCommand('cartestrefreshvehicles', refreshCatalogueCommand, true)
+AddEventHandler('onResourceStart', function(name)
+    if name == currentResource then scheduleScan('vehiclelab start')
+    elseif declaredMetadata(name) then scheduleScan(('vehicle resource start: %s'):format(name)) end
+end)
 
-AddEventHandler('onResourceStart', function(resourceName)
-    if resourceName == currentResource then
-        scheduleScan('vehiclelab start')
-    else
-        scheduleScan(('resource start: %s'):format(resourceName))
+AddEventHandler('onResourceStop', function(name)
+    if name ~= currentResource and catalogueResources[name] then
+        scheduleScan(('vehicle resource stop: %s'):format(name))
     end
 end)
 
-AddEventHandler('onResourceStop', function(resourceName)
-    if resourceName ~= currentResource then
-        scheduleScan(('resource stop: %s'):format(resourceName))
-    end
-end)
-
-CreateThread(function()
-    Wait(0)
-    scheduleScan('server initialization')
-end)
+CreateThread(function() Wait(0) scheduleScan('server initialization') end)

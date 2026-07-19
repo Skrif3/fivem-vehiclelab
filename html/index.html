@@ -7,135 +7,109 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <main id="app" class="panel is-hidden" aria-hidden="true" hidden>
+    <main id="app" class="panel mode-compact" hidden aria-hidden="true">
         <header class="panel-header">
-            <div>
-                <p class="eyebrow">SkrifHub development tool</p>
-                <h1>VehicleLab</h1>
+            <div class="title-block">
+                <p>Universal vehicle development tool</p>
+                <h1>VehicleLab <span id="version"></span></h1>
             </div>
-            <button id="closeButton" class="icon-button" type="button" aria-label="Close menu">&times;</button>
+            <div class="header-actions">
+                <button id="undoButton" type="button" title="Undo (Ctrl+Z)">Undo</button>
+                <button id="redoButton" type="button" title="Redo (Ctrl+Y)">Redo</button>
+                <button id="modeButton" type="button">Expand</button>
+                <button id="closeButton" class="icon-button" type="button" aria-label="Close">&times;</button>
+            </div>
         </header>
+        <div id="vehicleStatus" class="vehicle-status">No active vehicle</div>
+        <div id="toastArea" class="toast-area" aria-live="polite"></div>
 
-        <div id="vehicleStatus" class="vehicle-status">No test vehicle</div>
-        <div id="message" class="message" role="status" aria-live="polite"></div>
-
-        <nav class="tabs" aria-label="VehicleLab sections">
+        <nav id="tabs" class="tabs" aria-label="VehicleLab sections">
             <button class="tab is-active" data-tab="vehicles" type="button">Vehicles</button>
-            <button class="tab" data-tab="paint" type="button">Paint</button>
+            <button class="tab" data-tab="body" type="button">Body</button>
+            <button class="tab" data-tab="wheels" type="button">Wheels &amp; Stance</button>
+            <button class="tab" data-tab="performance" type="button">Performance</button>
+            <button class="tab" data-tab="paint" type="button">Paint &amp; Finish</button>
             <button class="tab" data-tab="liveries" type="button">Liveries</button>
-            <button class="tab" data-tab="tuning" type="button">Tuning</button>
             <button class="tab" data-tab="extras" type="button">Extras</button>
             <button class="tab" data-tab="utilities" type="button">Utilities</button>
+            <button class="tab" data-tab="diagnostics" type="button">Diagnostics</button>
         </nav>
 
         <div class="content">
             <section class="tab-panel is-active" data-panel="vehicles">
-                <div class="browser-toolbar">
-                    <input id="vehicleSearch" type="search" placeholder="Search vehicles..." autocomplete="off">
-                    <button id="refreshCatalogue" type="button">Refresh</button>
+                <div class="toolbar"><input id="vehicleSearch" type="search" placeholder="Search name, model, make, or resource"><button id="refreshCatalogue" type="button">Refresh</button></div>
+                <div class="filter-grid">
+                    <select id="typeFilter" aria-label="Source type"><option value="all">Base game &amp; add-on</option><option value="base">Base game</option><option value="addon">Add-on</option><option value="favorites">Favorites</option><option value="recent">Recent</option></select>
+                    <select id="classFilter" aria-label="Vehicle class"><option value="all">All classes</option></select>
+                    <select id="sourceFilter" aria-label="Resource"><option value="all">All resources</option></select>
                 </div>
-                <div class="filter-row">
-                    <div>
-                        <label for="categoryFilter">Category</label>
-                        <select id="categoryFilter"></select>
-                    </div>
-                    <div>
-                        <label for="sourceFilter">Source</label>
-                        <select id="sourceFilter"></select>
-                    </div>
+                <div class="summary"><span id="vehicleCount">0 vehicles</span><span id="selectedVehicle">Nothing selected</span></div>
+                <div id="vehicleList" class="list vehicle-list" role="listbox"></div>
+                <div class="button-row"><button id="favoriteVehicle" type="button">Toggle Favorite</button><button id="spawnButton" class="primary" type="button">Spawn Selected</button></div>
+                <button id="useCurrentVehicle" class="full" type="button">Use Current Vehicle</button>
+            </section>
+
+            <section class="tab-panel" data-panel="body">
+                <div id="bodyEmpty" class="empty">No active vehicle.</div>
+                <div id="bodyWorkspace" hidden>
+                    <label for="bodyCategory">Supported category</label><select id="bodyCategory"></select>
+                    <div class="readout"><span id="bodyCurrent">Current: Stock</span><strong id="bodyPreview">Stock</strong></div>
+                    <div class="stepper"><button id="bodyPrevious" type="button">Previous</button><span id="bodyCounter">0 / 0</span><button id="bodyNext" type="button">Next</button></div>
+                    <div class="button-grid"><button id="bodyStock" type="button">Stock</button><button id="bodyRevert" type="button">Revert Preview</button><button id="bodyConfirm" class="primary" type="button">Confirm</button><button id="bodyUnsafe" class="warning" type="button">Mark Option Unsafe</button></div>
+                    <button id="clearUnsafe" class="full" type="button">Clear Session Unsafe List</button>
+                    <p class="key-help">Arrows navigate. Shift skips five. Enter confirms. Backspace selects Stock. R reverts.</p>
                 </div>
-                <div class="browser-summary">
-                    <span id="vehicleCount">0 vehicles</span>
-                    <span id="selectedVehicle">Nothing selected</span>
+            </section>
+
+            <section class="tab-panel" data-panel="wheels">
+                <div id="wheelsEmpty" class="empty">No active vehicle.</div>
+                <div id="wheelsWorkspace" hidden>
+                    <div id="stanceSummary" class="stance-summary" aria-live="polite"></div>
+                    <details class="stance-section" open><summary>Wheel Model</summary><div id="wheelModelControls" class="stance-section-body"></div><div class="button-row"><button id="resetWheels" class="danger" type="button">Reset Wheels</button><button id="focusWheels" type="button">View Front</button></div></details>
+                    <details class="stance-section" open><summary>Tyre Options</summary><div id="tyreControls" class="stance-section-body"></div></details>
+                    <section class="stance-toolbar" aria-label="Stance editor options">
+                        <div><span>Precision</span><div id="stancePrecision" class="segmented"><button type="button" data-precision="fine">Fine</button><button type="button" data-precision="normal" class="is-active">Normal</button><button type="button" data-precision="coarse">Coarse</button></div></div>
+                        <div><span>Dimension range</span><div id="stanceRangeMode" class="segmented"><button type="button" data-range="safe" class="is-active">Safe</button><button type="button" data-range="extended">Extended</button></div></div>
+                    </section>
+                    <div id="stanceStatus" class="support-note"></div>
+                    <details id="stanceDimensionsSection" class="stance-section" open><summary>Wheel Dimensions</summary><div id="stanceDimensions" class="stance-card-list"></div></details>
+                    <details id="stancePositionSection" class="stance-section" open><summary>Wheel Position</summary><div id="stancePosition" class="stance-card-list"></div></details>
+                    <details id="stanceAlignmentSection" class="stance-section" open><summary>Alignment</summary><div id="stanceAlignment" class="stance-card-list"></div></details>
+                    <details id="stanceSuspensionSection" class="stance-section" open><summary>Suspension</summary><div id="stanceSuspension" class="stance-card-list"></div></details>
+                    <details id="stanceAdvancedSection" class="stance-section" hidden><summary>Advanced Individual Wheels</summary><div class="stance-warning">Individual wheel adjustments can make the vehicle asymmetrical.</div><div id="stanceIndividual" class="stance-card-list"></div><div class="button-grid"><button id="mirrorLeftToRight" type="button">Mirror Left to Right</button><button id="mirrorRightToLeft" type="button">Mirror Right to Left</button><button id="copyFrontToRear" type="button">Copy Front to Rear</button><button id="resetIndividualWheels" class="danger" type="button">Reset Individual Positions</button></div></details>
+                    <div class="stance-footer"><div class="button-grid"><button id="viewStanceFront" type="button">View Front</button><button id="viewStanceRear" type="button">View Rear</button><button id="viewStanceSide" type="button">View Side</button><button id="resetStance" class="danger" type="button">Reset Entire Stance</button></div></div>
                 </div>
-                <div id="vehicleList" class="vehicle-list" role="listbox" aria-label="Available vehicles"></div>
-                <button id="spawnButton" class="primary-button full-width" type="button">Spawn Selected Vehicle</button>
-                <p class="hint">Search by name, model, manufacturer, or source. Double-clicking a row also spawns it.</p>
+            </section>
+
+            <section class="tab-panel" data-panel="performance">
+                <div id="performanceEmpty" class="empty">No active vehicle.</div>
+                <div id="performanceControls"></div>
+                <div class="button-grid"><button id="stockPerformance" type="button">Stock Performance</button><button id="maxPerformance" class="primary" type="button">Max Performance</button><button id="toggleTurbo" type="button">Toggle Turbo</button><button id="resetPerformance" class="danger" type="button">Reset Performance</button></div>
             </section>
 
             <section class="tab-panel" data-panel="paint">
-                <div class="field-row">
-                    <div>
-                        <label for="primaryColour">Primary body colour</label>
-                        <span id="primaryValue" class="value-label">#000000</span>
-                    </div>
-                    <input id="primaryColour" type="color" value="#000000">
-                </div>
-                <div class="field-row">
-                    <div>
-                        <label for="secondaryColour">Secondary body colour</label>
-                        <span id="secondaryValue" class="value-label">#000000</span>
-                    </div>
-                    <input id="secondaryColour" type="color" value="#000000">
-                </div>
-                <p class="hint">Changes are applied live as custom RGB colours.</p>
-            </section>
-
-            <section class="tab-panel" data-panel="liveries">
-                <div id="liveryEmpty" class="empty-state">Spawn a vehicle to inspect its liveries.</div>
-                <div id="liveryControls" class="is-hidden">
-                    <div class="livery-readout">
-                        <span id="liveryType">No implementation</span>
-                        <strong id="liveryIndex">—</strong>
-                    </div>
-                    <div class="button-row">
-                        <button id="previousLivery" type="button">Previous</button>
-                        <button id="nextLivery" type="button">Next</button>
-                    </div>
+                <div id="paintEmpty" class="empty">No active vehicle.</div>
+                <div id="paintWorkspace" hidden>
+                    <section class="group"><h2>Factory / Palette</h2><div id="indexedPaint"></div></section>
+                    <section class="group"><h2>Custom RGB</h2><div id="customPaint"></div><div class="button-grid"><button id="copyPrimary" type="button">Primary to Secondary</button><button id="copySecondary" type="button">Secondary to Primary</button><button id="swapPaint" type="button">Swap Colours</button><button id="saveSwatch" type="button">Save Primary Swatch</button></div><div id="swatches" class="swatches"></div></section>
+                    <section class="group"><h2>Lighting &amp; Details</h2><div id="lightingControls"></div></section>
+                    <button id="resetPaint" class="danger full" type="button">Reset Paint</button>
                 </div>
             </section>
 
-            <section class="tab-panel" data-panel="tuning">
-                <div id="tuningEmpty" class="empty-state">Spawn a vehicle to inspect available modifications.</div>
-                <div id="tuningList" class="tuning-list"></div>
-                <div id="tuningNavigator" class="tuning-navigator is-hidden">
-                    <span id="tuningCategoryName">—</span>
-                    <div class="option-stepper">
-                        <button id="previousPart" type="button" aria-label="Previous tuning option">Previous</button>
-                        <strong id="tuningOptionReadout">—</strong>
-                        <button id="nextPart" type="button" aria-label="Next tuning option">Next</button>
-                    </div>
-                    <small id="tuningConfirmedReadout" class="confirmed-readout">Confirmed: —</small>
-                    <div class="compact-actions">
-                        <button id="confirmPart" class="primary-button" type="button">Confirm</button>
-                        <button id="revertPreview" type="button">Revert Preview</button>
-                    </div>
-                </div>
-                <p class="keyboard-help">↑↓ Category&nbsp;&nbsp; ←→ Option&nbsp;&nbsp; Enter Confirm&nbsp;&nbsp; Backspace Stock</p>
-                <div class="stacked-actions">
-                    <button id="maxPerformance" type="button">Apply Maximum Performance</button>
-                    <button id="resetModifications" class="danger-button" type="button">Reset All Modifications</button>
-                </div>
-            </section>
-
-            <section class="tab-panel" data-panel="extras">
-                <div id="extrasEmpty" class="empty-state">Spawn a vehicle to inspect available extras.</div>
-                <div id="extrasList" class="extras-list"></div>
-                <p class="keyboard-help">↑↓ Extra&nbsp;&nbsp; ←→ State&nbsp;&nbsp; Enter Apply</p>
-            </section>
+            <section class="tab-panel" data-panel="liveries"><div id="liveriesEmpty" class="empty">No active vehicle.</div><div id="liverySystems"></div></section>
+            <section class="tab-panel" data-panel="extras"><div id="extrasEmpty" class="empty">No active vehicle.</div><div id="extrasList" class="list"></div><div class="button-grid"><button id="enableExtras" type="button">Enable All</button><button id="disableExtras" type="button">Disable All</button><button id="resetExtras" class="danger" type="button">Reset Extras</button></div></section>
 
             <section class="tab-panel" data-panel="utilities">
-                <div class="utility-grid">
-                    <button id="repairButton" type="button">Repair</button>
-                    <button id="cleanButton" type="button">Clean Vehicle</button>
-                    <button id="resetButton" type="button">Reset Vehicle</button>
-                    <button id="deleteButton" class="danger-button" type="button">Delete Vehicle</button>
-                    <button id="focusVehicle" type="button">Focus Vehicle</button>
-                    <button id="randomVisualBuild" type="button">Random Visual Build</button>
-                    <button id="utilityPreviousPart" type="button">Previous Part</button>
-                    <button id="utilityNextPart" type="button">Next Part</button>
-                </div>
-                <div class="stacked-actions preset-actions">
-                    <button id="saveSetup" type="button">Save Current Setup</button>
-                    <button id="loadSetup" type="button">Load Saved Setup</button>
-                    <button id="copySetup" type="button">Copy Setup JSON</button>
-                    <button id="resetVisuals" class="danger-button" type="button">Reset Visuals to Stock</button>
-                </div>
-                <p class="hint">Reset Vehicle replaces the current test vehicle with a fresh spawn.</p>
+                <section class="group"><h2>Vehicle Care</h2><div class="button-grid"><button data-utility="repair">Repair Vehicle</button><button data-utility="clean">Clean Vehicle</button><button data-utility="fixTyres">Fix Tyres</button><button data-utility="fixWindows">Fix Windows</button></div><label>Dirt level <input id="dirtLevel" type="range" min="0" max="15" step="0.1"></label></section>
+                <section class="group"><h2>Vehicle State</h2><div class="button-grid"><button id="freezeVehicle">Freeze</button><button id="engineVehicle">Engine On/Off</button><button id="lockVehicle">Lock/Unlock</button><button data-utility="ground">Set On Ground</button><button data-utility="upright">Flip Upright</button><button id="respawnVehicle">Respawn Same Model</button><button id="refreshVehicleCapabilities">Refresh Vehicle Capabilities</button><button id="releaseActiveVehicle">Release Active Vehicle</button><button id="deleteVehicle" class="danger">Delete Active Vehicle</button><button id="resetEntire" class="danger">Reset Entire Vehicle</button></div><h2>Door Testing</h2><div class="button-grid"><button data-door="0">Front Left</button><button data-door="1">Front Right</button><button data-door="2">Rear Left</button><button data-door="3">Rear Right</button><button data-door="4">Hood</button><button data-door="5">Trunk</button></div></section>
+                <section class="group"><h2>Visual Testing</h2><div class="button-grid"><button id="focusVehicle">Focus Vehicle</button><button id="screenshotMode">Screenshot Mode</button></div></section>
+                <section class="group"><h2>Presets</h2><div class="toolbar"><input id="presetName" type="text" maxlength="48" placeholder="Preset name"><button id="savePreset" class="primary">Save</button></div><div id="presetList" class="list preset-list"></div><div class="button-grid"><button id="renamePreset">Rename</button><button id="duplicatePreset">Duplicate</button><button id="favoritePreset">Favorite</button><button id="loadPreset">Load</button><button id="deletePreset" class="danger">Delete</button><button id="exportPreset">Copy Preset JSON</button></div><textarea id="importJson" rows="5" placeholder="Paste versioned preset JSON"></textarea><button id="importPreset" class="full">Import JSON</button><div class="button-row"><button id="copySetup">Copy Current Setup JSON</button><button id="resetLighting" class="danger">Reset Lighting</button></div></section>
             </section>
+
+            <section class="tab-panel" data-panel="diagnostics"><div class="button-row"><button id="refreshDiagnostics">Refresh</button><button id="copyDiagnostics">Copy Diagnostics JSON</button></div><pre id="diagnosticsOutput">No active vehicle.</pre></section>
         </div>
     </main>
-
     <script src="script.js"></script>
 </body>
 </html>
